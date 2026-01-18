@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from typing import List
 import feedparser
+from urllib.parse import quote
+
 
 app = FastAPI(
     title="Noticias Fútbol Femenino",
@@ -47,19 +49,28 @@ EQUIPOS_POR_PAIS = {
 }
 
 def buscar_noticias(equipo: str, limite: int = 4):
-    query = f"{equipo} fútbol femenino"
-    rss_url = f"https://news.google.com/rss/search?q={query}&hl=es&gl=ES&ceid=ES:es"
-    feed = feedparser.parse(rss_url)
+    try:
+        query = quote(f"{equipo} fútbol femenino")
+        rss_url = f"https://news.google.com/rss/search?q={query}&hl=es&gl=ES&ceid=ES:es"
 
-    noticias = []
-    for entry in feed.entries[:limite]:
-        noticias.append({
-            "titulo": entry.title,
-            "url": entry.link,
-            "fuente": entry.source.title if "source" in entry else "Google News"
-        })
+        feed = feedparser.parse(rss_url)
 
-    return noticias
+        noticias = []
+        if not feed.entries:
+            return noticias
+
+        for entry in feed.entries[:limite]:
+            noticias.append({
+                "titulo": entry.get("title", ""),
+                "url": entry.get("link", ""),
+                "fuente": entry.get("source", {}).get("title", "Google News")
+            })
+
+        return noticias
+
+    except Exception:
+        return []
+
 
 
 @app.get("/")
