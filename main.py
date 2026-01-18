@@ -1,69 +1,100 @@
 from fastapi import FastAPI
-import requests
-import os
-from dotenv import load_dotenv
+from typing import List
+import feedparser
 
-# Cargar variables de entorno (.env en local, Environment Variables en Render)
-load_dotenv()
+app = FastAPI(
+    title="Noticias Fútbol Femenino",
+    version="1.0.0"
+)
 
-app = FastAPI()
+EQUIPOS_POR_PAIS = {
+    "espana": [
+        "Barcelona Femenino",
+        "Real Madrid Femenino",
+        "Atlético de Madrid Femenino",
+        "Levante Femenino",
+        "Real Sociedad Femenino",
+        "Athletic Club Femenino",
+        "Sevilla Femenino",
+        "Valencia Femenino",
+        "Granada Femenino",
+        "Real Betis Femenino"
+    ],
+    "inglaterra": [
+        "Chelsea Women",
+        "Arsenal Women",
+        "Manchester City Women",
+        "Manchester United Women",
+        "Tottenham Women",
+        "Aston Villa Women",
+        "Everton Women",
+        "West Ham Women",
+        "Brighton Women",
+        "Leicester City Women"
+    ],
+    "estados-unidos": [
+        "Portland Thorns",
+        "OL Reign",
+        "San Diego Wave",
+        "Angel City FC",
+        "North Carolina Courage",
+        "Orlando Pride",
+        "Chicago Red Stars",
+        "Washington Spirit",
+        "Racing Louisville",
+        "Kansas City Current"
+    ]
+}
 
-GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
+def buscar_noticias(equipo: str, limite: int = 4):
+    query = f"{equipo} fútbol femenino"
+    rss_url = f"https://news.google.com/rss/search?q={query}&hl=es&gl=ES&ceid=ES:es"
+    feed = feedparser.parse(rss_url)
 
+    noticias = []
+    for entry in feed.entries[:limite]:
+        noticias.append({
+            "titulo": entry.title,
+            "url": entry.link,
+            "fuente": entry.source.title if "source" in entry else "Google News"
+        })
 
-def link_activo(url: str) -> bool:
-    try:
-        r = requests.head(url, timeout=5, allow_redirects=True)
-        return r.status_code == 200
-    except:
-        return False
+    return noticias
 
 
 @app.get("/")
 def home():
-    return {"status": "API funcionando"}
-
-
-@app.get("/noticias/{equipo}")
-def noticias_equipo(equipo: str):
-    if not GNEWS_API_KEY:
-        return {"error": "API key de GNews no configurada"}
-
-    url = "https://gnews.io/api/v4/search"
-    params = {
-        "q": equipo,
-        "lang": "es",
-        "max": 10,  # pedimos más para filtrar links rotos
-        "apikey": GNEWS_API_KEY
+    return {
+        "mensaje": "API de noticias de fútbol femenino activa",
+        "uso": "/ranking/{pais}/{numero_equipos}"
     }
 
-    response = requests.get(url, params=params)
 
-    if response.status_code != 200:
-        return {
+@app.get("/ranking/{pais}/{numero_equipos}")
+def ranking_noticias(pais: str, numero_equipos: int):
+    pais = pais.lower()
+
+    if pais not in EQUIPOS_POR_PAIS:
+        return {"error": "País no soportado"}
+
+    equipos = EQUIPOS_POR_PAIS[pais][:numero_equipos]
+
+    resultado = []
+    for equipo in equipos:
+        noticias = buscar_noticias(equipo)
+        resultado.append({
             "equipo": equipo,
-            "total_noticias": 0,
-            "noticias": []
+            "total_noticias": len(noticias),
+            "noticias": noticias
+        })
+
+    if not resultado:
+        return {
+            "mensaje": "La API no devolvió noticias para los equipos seleccionados."
         }
 
-    data = response.json()
-    noticias = []
-
-    for n in data.get("articles", []):
-        url_noticia = n.get("url")
-
-        if url_noticia and link_activo(url_noticia):
-            noticias.append({
-                "titulo": n.get("title"),
-                "url": url_noticia,
-                "fuente": n.get("source", {}).get("name")
-            })
-
-        if len(noticias) == 4:
-            break
-
     return {
-        "equipo": equipo,
-        "total_noticias": len(noticias),
-        "noticias": noticias
+        "pais": pais,
+        "ranking_equipos": numero_equipos,
+        "equipos": resultado
     }
